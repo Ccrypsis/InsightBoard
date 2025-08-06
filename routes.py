@@ -1,150 +1,467 @@
-# Description: This file contains the routes for the Flask application.
-# Scroll down and add routes to serve your html pages
-# Update the create account and login routes to work with your data model
-# Add your API routes to interact with your database
-#
-# Note: ou can hand chatgpt your file and your model.py file and ask it to generate
-# the routes you want and add them to your routes.py code
-
-import datetime
-from flask import Blueprint, current_app, request, jsonify, render_template
+from flask import flash,Blueprint, current_app, request, jsonify, render_template, session, redirect, url_for, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import decode_token
-from extensions import db  # Import db from the newly created extensions.py file
 import jwt
-
-# IMPORTANT: import any objects from your model.py file that you need to work with here
-#            uncomment the line below and update it to match your model
-#from model import oneOfMyObjects, anotherOfMyObjects
-
-# PLACE UTILITY FUNCTIONS HERE
-# For example, you can define a function to validate the JWT token
-# and then use this in any route that requires token authorization
-# Helper function to decode the JWT token and validate the user
-
-def validate_token(request):
-    auth_header = request.headers.get('Authorization', None)  # Extract the authorization header
-    if not auth_header:
-        return None, jsonify({"error": "Token is missing!"}), 401  # Return error if token is missing
-
-    try:
-        token = auth_header.split(" ")[1]  # Split the header and get the token (format: "Bearer <token>")
-        decoded_token = decode_token(token)  # Decode the JWT token
-
-        # Example of pulling the sub key out of the token and using it
-        # to query user records to find a user with a matching email
-        # Note: you can store any unique identifier in the sub key
-        # and you will decide what that is when you generate the token at logon
-        
-        #user = User.query.filter_by(email=decoded_token['sub']).first()  # Find the user by email
-        #if not user:
-        #    return None, jsonify({"error": "User not found!"}), 404  # Return error if user not found
-        #return user, None  # Return the user if the token is valid
-
-    except Exception as e:
-        return None, jsonify({"error": f"Token error: {str(e)}"}), 401  # Return error if token validation fails
+import pathlib
+import html
+from datetime import datetime, timezone
+from extensions import db
+from model import Post, PostReport
 
 
-# PLACE ROUTES HERE
-# Define a blueprint for routing (modularizes the app's routes)
-routes_blueprint = Blueprint('routes', __name__)
+routes_bp = Blueprint('routes', __name__)
 
-# Default route to serve the index.html file (home page)
-@routes_blueprint.route('/')
-def index():
-    return render_template('index.html')  # Render the index.html template when accessing '/'
+@routes_bp.route('/')
+def home():
+    return render_template('index.html')
 
-# Add routes for any other htmml pages you want to serve
-#EXAMPLE: Route to serve a page called chatwindow.html from your templates folder
-#@routes_blueprint.route('/chatwindow', methods=['GET'])
-#def chatwindow():
-#    return render_template('chatwindow.html')  # Render the chat window template
-
-# TEMPLATE: Route to handle account creation
-@routes_blueprint.route('/create_account', methods=['POST'])
-def create_account():
-    data = request.json  # Extract the incoming JSON data from the request
     
-    # edet these to match the fields in your user table
-    email = data.get('email')
-    name = data.get('name')
-    password = data.get('password')
+@routes_bp.route("/submit-feedback", methods=["POST"])
+def submit_feedback():
+    if not session.get("user_id"):
+        return jsonify({"status": "error", "message": "You must be logged in to submit feedback."}), 401
 
-    # Check if any required fields are missing
-    if not email or not name or not password:
-        return jsonify({"error": "Missing email, name, or password"}), 400  # Return error if any fields are missing
+    if session.get('user_role') == 'admin':
+        return jsonify({"status": "error", "message": "Admin users cannot submit anonymous feedback."}), 403
+    
+    data = request.get_json()
+    category = data.get("category")
+    content = data.get("content")
 
-    # Perform any additional validation here
-    # EXAMPLE: heck if a user with the provided email already exists
-    #existing_user = User.query.filter_by(email=email).first()
-    #if existing_user:
-    #    return jsonify({"error": "User with that email already exists"}), 400  # Return error if the email is already registered
+    if not category or not content:
+        return jsonify({"status": "error", "message": "Category and content required."}), 400
 
-    # Hash the user's password for security
-    # EXAMPLE: hashing a value stored in a variable called password
-    #hashed_password = generate_password_hash(password, method='sha256')
+    new_post = Post(
+        category=category,
+        content=content,
+        submitted_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        status="pending",
+        upvotes=0,
+        created_by = session.get("user_id") or 1
+    )
 
-    # Create the new account
-    # EXAMPLE: creating a new user object with the hashed password
-    # note that the object you will use depends on your model in model.py
-    #new_user = User(email=email, name=name, password=hashed_password)
-    #db.session.add(new_user)  # Add the new user to the database session
-    #db.session.commit()  # Commit the transaction to save the new user
+    db.session.add(new_post)
+    db.session.commit()
 
-    return jsonify({"message": "Account created successfully!"}), 201  # Return success message
-
-# TEMPLATE: route to handle user login
-@routes_blueprint.route('/login', methods=['POST'])
-def login():
-    data = request.json  # Extract the incoming JSON data from the request
-    # edit these to match the fields in your user table
-    email = data.get('email')
-    password = data.get('password')
-
-    # Check if any required fields are missing
-    # edit this to match the variables above
-    if not email or not password:
-        return jsonify({"error": "Missing email or password"}), 400  # Return error if email or password is missing
+    return jsonify({"status": "success", "message": "Thank you for your feedback! It has been submitted and is now pending approval."})
 
 
-    # Check if the user exists and if the password matches
-    # EXAMPLE: working with a user object from model.py to
-    # check if the user exists and if the password matches
-    # Note: update this to work with your objects in your model
+@routes_bp.route("/feedback", methods=["GET"])
+def serve_feedback_form():
+    if not session.get("user_id"):
+        flash("You must be logged in to submit feedback.", "error")
+        return redirect(url_for('auth.login_page'))
+    
+    if session.get('user_role') == 'admin':
+        flash("Admin users cannot submit anonymous feedback.", "error")
+        return redirect(url_for('auth.user_dashboard'))
+    
+    return render_template("submit.html")
 
-    #user = User.query.filter_by(email=email).first()
-    #if not user or not check_password_hash(user.password, password):
-    #    return jsonify({"error": "Invalid credentials"}), 400  # Return error if credentials are invalid
 
-    # Generate a JWT token that expires in 1 hour
-    # EXAMPLE: generating a token with the user's email as the subject
-    # Note: referencing the user variable above.
+@routes_bp.route("/api/approved_posts", methods=["GET"])
+def get_approved_posts():
+    posts = Post.query.filter(Post.status.in_(["Approved", "admin"]))\
+                      .order_by(Post.upvotes.desc()).all()
+    
+    for post in posts:
+        if post.created_at and post.created_at.tzinfo is None:
+            post.created_at = post.created_at.replace(tzinfo=timezone.utc)
+    
+    user_id = session.get("user_id")
+    user_role = session.get("user_role")
+    reported_posts = []
+    
+    if user_id:
+        reported_posts = [r.post_id for r in PostReport.query.filter_by(reported_by=user_id).all()]
+    
+    return jsonify([
+        {
+            "id": p.id,
+            "category": p.category,
+            "content": p.content,
+            "timestamp": p.created_at.isoformat() if p.created_at else "",
+            "status": p.status,
+            "upvotes": p.upvotes,
+            "reported": p.id in reported_posts,
+            "report_count": p.report_count if user_role == "admin" else None
+        } for p in posts
+    ])
 
-    token = jwt.encode({
-        'sub': '<place a unique identifier from your user object here>',  # Subject is the user's email
-        #Example:
-        #'sub': user.email,  # Subject is the user's email
-       'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)  # Token expiration time
-    }, current_app.config['SECRET_KEY'], algorithm='HS256')  # Sign the token with the app's secret key
 
-    return jsonify({"message": "Login successful!", "token": token}), 200  # Return success message and token
 
-# ADD YOUR API ROUTES HERE
-# EXAMPLE: Route to retrieve all RoboChatters from the database
 
-#@routes_blueprint.route('/robochatters', methods=['GET'])
-#def get_all_robochatters():
-#    print("Getting all RoboChatters...")  # Log for debugging
-#
-#    ###
-#    ### Note: example of using your validate_token function to check the token
-#    ###
-#    user, error_response = validate_token(request)  # Validate the user's token
-#    if error_response:
-#        return error_response  # Return error if the token validation fails
-#
-#    # Fetch all RoboChatters from the database
-#    robochatters = RoboChatter.query.all()
-#    # Create a list of dictionaries with RoboChatter details
-#    result = [{"id": r.id, "name": r.name, "description": r.description, "enabled": r.enabled} for r in robochatters]
-#    return jsonify(result), 200  # Return the list of RoboChatters
+@routes_bp.route("/admin/create-post", methods=["GET"])
+def serve_create_post():
+    if session.get('user_role') != 'admin':
+        return redirect(url_for('auth.login_page'))
+    return render_template("adminpost.html")
+
+@routes_bp.route("/admin/create-post", methods=["POST"])
+def handle_create_post():
+    if session.get('user_role') != 'admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+    category = request.form.get("category")
+    content = request.form.get("post")
+
+    if not category or not content:
+        return jsonify({"status": "error", "message": "Category and content required."}), 400
+
+    new_post = Post(
+        category=category,
+        content=content,
+        created_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(timezone.utc),
+        status="admin",
+        upvotes=0,
+        created_by=session.get("user_id") or 1
+    )
+
+    db.session.add(new_post)
+    db.session.commit()
+
+    return jsonify({"status": "success", "message": "Post submitted successfully!"})
+
+@routes_bp.route("/admin/pending")
+def admin_pending():
+    try:
+        pending_posts = Post.query.filter_by(status="Pending").all()
+        flagged_posts = Post.query.filter(Post.report_count > 0, Post.status == "Approved").all()
+
+        for post in pending_posts:
+            if post.submitted_at and post.submitted_at.tzinfo is None:
+                post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        
+        for post in flagged_posts:
+            if post.submitted_at and post.submitted_at.tzinfo is None:
+                post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+            if post.reviewed_at and post.reviewed_at.tzinfo is None:
+                post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+
+        flagged_posts_with_reports = []
+        for post in flagged_posts:
+            reports = PostReport.query.filter_by(post_id=post.id).all()
+            for report in reports:
+                if report.reported_at and report.reported_at.tzinfo is None:
+                    report.reported_at = report.reported_at.replace(tzinfo=timezone.utc)
+            flagged_posts_with_reports.append({
+                'post': post,
+                'reports': reports
+            })
+        
+        return render_template("pending.html", 
+                             pending_posts=pending_posts, 
+                             flagged_posts_with_reports=flagged_posts_with_reports)
+    except Exception as e:
+        flash(f"Database error: {str(e)}", "error")
+        return render_template("pending.html", pending_posts=[], flagged_posts_with_reports=[])
+
+@routes_bp.route("/admin/approve/<int:pid>", methods=["POST"])
+def approve_post(pid):
+    post = Post.query.get_or_404(pid)
+    post.status = "Approved"
+    post.reviewed_at = datetime.now(timezone.utc)
+    post.review_msg = "Approved ✅"
+    db.session.commit()
+    return redirect(url_for('routes.admin_pending'))
+
+@routes_bp.route("/admin/decline/<int:pid>", methods=["POST"])
+def decline_post(pid):
+    post = Post.query.get_or_404(pid)
+    post.status = "Declined"
+    post.reviewed_at = datetime.now(timezone.utc)
+    post.review_msg = "Declined ❌"
+    db.session.commit()
+    return redirect(url_for('routes.admin_pending'))
+
+@routes_bp.route("/admin/approve-flagged/<int:pid>", methods=["POST"])
+def approve_flagged_post(pid):
+    post = Post.query.get_or_404(pid)
+    post.report_count = 0
+    PostReport.query.filter_by(post_id=pid).delete()
+    post.reviewed_at = datetime.now(timezone.utc)
+    post.review_msg = "Re-approved after flag review ✅"
+    db.session.commit()
+    return redirect(url_for('routes.admin_pending'))
+
+@routes_bp.route("/admin/decline-flagged/<int:pid>", methods=["POST"])
+def decline_flagged_post(pid):
+    post = Post.query.get_or_404(pid)
+    post.status = "Declined"
+    post.reviewed_at = datetime.now(timezone.utc)
+    post.review_msg = "Declined after flag review ❌"
+    PostReport.query.filter_by(post_id=pid).delete()
+    db.session.commit()
+    return redirect(url_for('routes.admin_pending'))
+
+@routes_bp.route("/admin")
+def admin_dashboard():
+    if session.get('user_role') != 'admin':
+        return redirect(url_for('auth.login_page'))
+    
+    posts = Post.query.filter(Post.status.in_(["Approved", "admin"])).order_by(Post.upvotes.desc()).all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    user_id = session.get("user_id")
+    user_role = session.get("user_role")
+    reported_posts = []
+    
+    if user_id:
+        reported_posts = [r.post_id for r in PostReport.query.filter_by(reported_by=user_id).all()]
+    
+    return render_template("admin_dashboard.html", posts=posts, reported_ids=reported_posts, show_report_count=(user_role == "admin"))
+
+@routes_bp.route("/admin/approved")
+def admin_approved():
+    posts = Post.query.filter_by(status="Approved").all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    user_id = session.get("user_id")
+    user_role = session.get("user_role")
+    reported_posts = []
+    
+    if user_id:
+        reported_posts = [r.post_id for r in PostReport.query.filter_by(reported_by=user_id).all()]
+    
+    return render_template("approved.html", posts=posts, reported_ids=reported_posts, show_report_count=(user_role == "admin"))
+
+@routes_bp.route("/admin/declined")
+def admin_declined():
+    posts = Post.query.filter_by(status="Declined").all()
+
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    return render_template("declined.html", posts=posts)
+
+@routes_bp.route("/admin/all")
+@routes_bp.route("/admin/all/<status>")
+def all_posts(status=None):
+    if status == "Flagged":
+        posts = Post.query.filter(Post.report_count > 0, Post.status == "Approved").all()
+    elif status:
+        posts = Post.query.filter_by(status=status).all()
+    else:
+        posts = Post.query.all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    return render_template("all_posts.html", posts=posts, current_status=status)
+
+@routes_bp.route("/admin/submit", methods=["GET", "POST"])
+def admin_submit_form():
+    if request.method == "POST":
+        content = request.form["content"]
+        post = Post(content=content, status="Pending", submitted_at=datetime.now(timezone.utc))
+        db.session.add(post)
+        db.session.commit()
+        flash("Post submitted for review.")
+        return redirect(url_for('routes.admin_submit_form'))
+    return render_template("submit.html")
+
+
+
+
+def flash_message(msg):
+    flash(msg)
+
+def badge(post):
+    return f'<span class="badge badge-{post.status.lower()}">{post.status}</span>'
+
+
+@routes_bp.route("/seed")
+def seed():
+    if not Post.query.first():
+        db.session.add_all([
+            Post(content="First pending post", status="Pending", submitted_at=datetime.now(timezone.utc), created_by=1),
+            Post(content="Another suggestion awaiting review", status="Pending", submitted_at=datetime.now(timezone.utc), created_by=1)
+        ])
+        db.session.commit()
+    return "Seeded!"
+
+@routes_bp.route("/admin-queue")
+def admin_queue():
+    posts = Post.query.filter(Post.status.in_(["Pending", "Flagged"])).all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    return render_template("pending.html", posts=posts)
+
+@routes_bp.route("/admin-approve/<int:pid>", methods=["POST"])
+def approve(pid):
+    _review(pid, "Approved", "Post approved ✅")
+    return redirect(url_for("routes.admin_queue"))
+
+@routes_bp.route("/admin-decline/<int:pid>", methods=["POST"])
+def decline(pid):
+    _review(pid, "Declined", "Post declined ❌")
+    return redirect(url_for("routes.admin_queue"))
+
+def _review(pid, new_status, msg):
+    p = Post.query.get_or_404(pid)
+    p.status = new_status
+    p.reviewed_at = datetime.now(timezone.utc)
+    p.review_msg = msg
+    db.session.commit()
+    flash_message(msg)
+
+@routes_bp.route("/admin-approved")
+def approved():
+    posts = Post.query.filter_by(status="Approved").all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    reported = session.setdefault("reported_ids", [])
+    return render_template("approved.html", posts=posts, reported_ids=reported)
+
+@routes_bp.route("/admin-declined")
+def declined():
+    posts = Post.query.filter_by(status="Declined").all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    return render_template("declined.html", posts=posts)
+
+@routes_bp.route("/admin-all")
+@routes_bp.route("/admin-all/<status>")
+def all_posts_new(status=None):
+    posts = Post.query.filter_by(status=status).all() if status else Post.query.all()
+    
+    for post in posts:
+        if post.submitted_at and post.submitted_at.tzinfo is None:
+            post.submitted_at = post.submitted_at.replace(tzinfo=timezone.utc)
+        if post.reviewed_at and post.reviewed_at.tzinfo is None:
+            post.reviewed_at = post.reviewed_at.replace(tzinfo=timezone.utc)
+    
+    reported = session.setdefault("reported_ids", [])
+    return render_template("all_posts.html", posts=posts, reported_ids=reported, current_status=status)
+
+@routes_bp.route("/admin-submit", methods=["GET", "POST"])
+def submit():
+    if request.method == "POST":
+        db.session.add(Post(content=request.form["content"], status="Pending", submitted_at=datetime.now(timezone.utc), created_by=1))
+        db.session.commit()
+        flash_message("Post submitted for review.")
+        return redirect(url_for("routes.submit"))
+    return render_template("submit.html")
+
+@routes_bp.route("/badges")
+def badges():
+    if not session.get("user_id"):
+        return redirect(url_for('auth.login_page'))
+    return render_template("badges.html")
+
+@routes_bp.route("/report/<int:pid>", methods=["GET", "POST"])
+def report(pid):
+    if not session.get("user_id"):
+        flash("You must be logged in to report posts.", "error")
+        return redirect(url_for('auth.login_page'))
+    
+    post = Post.query.get_or_404(pid)
+    user_id = session.get("user_id")
+    
+    existing_report = PostReport.query.filter_by(post_id=pid, reported_by=user_id).first()
+    
+    if request.method == "POST" and not existing_report:
+        try:
+            report = PostReport(
+                post_id=pid,
+                reported_by=user_id,
+                reason=request.form["reason"][:200]
+            )
+            db.session.add(report)
+            
+            post.report_count += 1
+            
+            if post.report_count >= 3:
+                post.status = "Declined"
+                post.reviewed_at = datetime.now(timezone.utc)
+                post.review_msg = f"Auto-declined due to {post.report_count} reports"
+                flash(f"Post has been reported {post.report_count} times and has been automatically declined.", "warning")
+            else:
+                post.status = "Approved"
+                flash(f"Report submitted. Post has {post.report_count} report(s) and will be reviewed by admin.", "success")
+            
+            db.session.commit()
+            if session.get("user_role") == "admin":
+                return redirect(url_for("routes.admin_approved"))
+            else:
+                return redirect(url_for("auth.user_dashboard"))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash("Error submitting report. You may have already reported this post.", "error")
+            if session.get("user_role") == "admin":
+                return redirect(url_for("routes.admin_approved"))
+            else:
+                return redirect(url_for("auth.user_dashboard"))
+    
+    return render_template("report.html", already=existing_report is not None, post=post)
+
+@routes_bp.route("/admin/search-filter", methods=["GET"])
+def admin_search_filter():
+    if session.get("user_role") != "admin":
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+    keyword = request.args.get("q", "").strip().lower()
+    selected_categories = request.args.getlist("category")
+    selected_statuses = request.args.getlist("status")
+
+    query = Post.query
+
+    if keyword:
+        query = query.filter(Post.content.ilike(f"%{keyword}%"))
+
+    if selected_categories:
+        query = query.filter(Post.category.in_(selected_categories))
+
+    if selected_statuses:
+        if "All" in selected_statuses:
+            pass
+        else:
+            query = query.filter(Post.status.in_(selected_statuses))
+
+    posts = query.order_by(Post.submitted_at.desc()).all()
+
+    return render_template(
+        "all_posts.html",
+        posts=posts,
+        selected_statuses=selected_statuses,
+        selected_categories=selected_categories,
+        current_status="Filtered"
+    )
+
+        
+
+

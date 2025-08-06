@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Dashboard</title>
+  <style>
+    #popup {
+      display: none;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    #popup.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    #popup.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Alert Pop up -->
+  <div id="popup" aria-live="polite"><span id="popup-message"></span></div>
+
+  <!--Dashboard -->
+  <div id="dashboard-section">
+    <h2>Admin Dashboard</h2>
+
+    <!-- Account -->
+    <button onclick="showForm()">Create New Account</button>
+    <br><br>
+
+    <!-- Post Management -->
+    <h3>Post Management</h3>
+    <a href="/admin/create-post"><button>Create a Post</button></a><br><br>
+    <a href="/admin/approved"><button>View Approved Posts</button></a><br><br>
+    <a href="/admin/pending"><button>Review Pending Posts</button></a><br><br>
+    <a href="/admin/declined"><button>View Declined Posts</button></a><br><br>
+    <a href="/admin/all"><button>View All Posts</button></a><br><br>
+
+  </div>
+
+  <!-- Account Creation Form -->
+  <div id="form-section" style="display: none;">
+    <h2>Create User Account [Admin]</h2>
+
+    <form id="accountForm" action="/admin/create-account" method="POST">
+      <label for="first_name">First Name:</label><br>
+      <input type="text" name="first_name" id="first_name" required><br><br>
+
+      <label for="last_name">Last Name:</label><br>
+      <input type="text" name="last_name" id="last_name" required><br><br>
+
+      <label for="email">Email:</label><br>
+      <input type="email" name="email" id="email" required><br><br>
+
+      <!-- ✅ NEW -->
+      <label for="password">Password:</label><br>
+      <input type="password" name="password" id="password" required><br><br>
+
+      <label for="role">Role:</label><br>
+      <select name="role" id="role" required>
+        <option value="admin">Admin</option>
+        <option value="user">User</option>
+      </select>
+
+      <button type="submit">Create Account</button>
+    </form>
+
+    <br>
+    <button onclick="showDashboard()">Back to Dashboard</button>
+  </div>
+
+  <script>
+    function showForm() {
+      document.getElementById("dashboard-section").style.display = "none";
+      document.getElementById("form-section").style.display = "block";
+    }
+
+    function showDashboard() {
+      document.getElementById("form-section").style.display = "none";
+      document.getElementById("dashboard-section").style.display = "block";
+    }
+
+ //Handle form submit event
+    document.getElementById("accountForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const form = e.target;
+      const data = new FormData(form);
+
+      try {
+        const res = await fetch("/admin/create-account", {
+          method: "POST",
+          body: data
+        });
+
+        const result = await res.json();
+
+        const popup = document.getElementById("popup");
+        const message = document.getElementById("popup-message");
+
+        if (res.ok && result.status === "success") {
+          popup.className = "success";
+          message.innerText = result.message;
+          form.reset(); // Clear the form
+        } else {
+          popup.className = "error";
+          message.innerText = result.message || "Something went wrong.";
+        }
+
+        popup.style.display = "block";
+
+        // Timeout popup
+        setTimeout(() => {
+          popup.style.display = "none";
+        }, 60000);
+
+      } catch (err) {
+        console.error(err);
+        const popup = document.getElementById("popup");
+        const message = document.getElementById("popup-message");
+        popup.className = "error";
+        message.innerText = "Server error. Please try again.";
+        popup.style.display = "block";
+      }
+    });
+  </script>
+
+  <form action="{{ url_for('auth.logout') }}" method="GET" style="margin-top: 20px;">
+      <button type="submit">Logout</button>
+  </form>
+
+</body>
+</html>

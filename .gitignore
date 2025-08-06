@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # Ignore virtual environment folder
-.venv/
+admin-posts/.venv/
 
 # Ignore Flask instance folder
 instance/
@@ -12,6 +12,6 @@ instance/
 # Ignore config.py (configuration files)
 
 #UNCOMMENT THIS BEFORE YOU PUSH TO YOUR OWN REPOSITORY!
-#config.py
+config.py
 
 .DS_Store

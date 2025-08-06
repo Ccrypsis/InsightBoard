@@ -1,0 +1,132 @@
+{% extends "base_with_sidebar.html" %}
+
+{% block title %}All Posts{% endblock %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-gray-900 mb-8">All Posts</h1>
+
+<!-- Unified Filter Form -->
+<div class="bg-gray-50 border border-gray-200 p-4 rounded-xl shadow mb-6">
+  <form id="filterForm" method="GET" action="/admin/search-filter">
+    <div class="flex flex-wrap items-start gap-4">
+
+      <!-- Keyword Search -->
+      <input 
+        type="text" 
+        name="q" 
+        value="{{ request.args.get('q', '') }}" 
+        placeholder="Search keyword..." 
+        class="input input-bordered input-sm w-full sm:w-64" 
+      />
+
+      <!-- Category Filter -->
+      <div class="w-full">
+        <div class="text-sm font-medium text-gray-700 mb-1">Filter by Category:</div>
+        <div class="flex flex-wrap gap-3">
+          {% set categories = ["HR", "Policy", "Culture", "Question", "Feature Request"] %}
+          {% for cat in categories %}
+            <label class="flex items-center gap-1 text-sm">
+              <input 
+                type="checkbox" 
+                name="category" 
+                value="{{ cat }}" 
+                class="checkbox checkbox-sm"
+                {% if cat in selected_categories %}checked{% endif %}
+              />
+              <span>{{ cat }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Status Filter -->
+      {% set selected_statuses = request.args.getlist('status') %}
+      <div class="w-full mt-4">
+        <div class="text-sm font-medium text-gray-700 mb-1">Filter by Status:</div>
+        <div class="flex flex-wrap gap-3">
+          {% set statuses = ["All", "Pending", "Approved", "Declined", "Flagged"] %}
+          {% for s in statuses %}
+            <label class="flex items-center gap-1 text-sm">
+              <input 
+                type="checkbox" 
+                name="status" 
+                value="{{ s }}"
+                class="checkbox checkbox-sm"
+                {% if s in selected_statuses %}checked{% endif %}
+              />
+              <span>{{ s }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-2 mt-4">
+        <button type="submit" class="btn btn-sm btn-primary">Apply Filters</button>
+        <button type="button" onclick="resetFilters()" class="btn btn-sm btn-outline">Reset</button>
+      </div>
+
+    </div>
+  </form>
+</div>
+
+{% for p in posts %}
+  <div class="card">
+    <div class="flex justify-between items-start mb-2">
+      <div class="flex items-center space-x-2">
+        {% if p.status == "admin" %}
+          <span class="status-badge status-admin">Admin Post</span>
+        {% elif current_status == "Flagged" %}
+          <span class="status-badge status-flagged">Flagged</span>
+        {% else %}
+          <span class="status-badge status-{{ p.status.lower() }}">{{ p.status }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="text-sm text-gray-600 mb-1">
+      {{ p.category }}
+    </div>
+
+    <div class="text-sm text-gray-500 mb-3">
+      {% if p.submitted_at %}
+        <span data-timestamp="{{ p.submitted_at.isoformat() }}" data-time-format="full"></span>
+      {% endif %}
+      {% if p.reviewed_at and p.status != "Pending" %}
+        {% if p.submitted_at %} | {% endif %}
+        Reviewed: <span data-timestamp="{{ p.reviewed_at.isoformat() }}" data-time-format="full"></span>
+      {% endif %}
+    </div>
+
+    <p class="text-gray-800 mb-3">{{ p.content }}</p>
+
+    <div class="flex items-center text-sm text-gray-500">
+      {% if p.status == "Approved" or p.status == "admin" %}
+        <span>↑ {{ p.upvotes or 0 }}</span>
+        <span class="mx-2">|</span>
+        <span>↓ {{ p.downvotes or 0 }}</span>
+        {% if p.report_count and p.report_count > 0 %}
+          <span class="mx-2">|</span>
+          <span class="text-red-600">Reports: {{ p.report_count }}</span>
+        {% endif %}
+      {% elif p.status == "Pending" %}
+        <span class="text-yellow-600">Awaiting Review</span>
+      {% elif p.status == "Declined" %}
+        <span class="text-red-600">Declined</span>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <p class="text-gray-500">No posts found.</p>
+{% endfor %}
+
+<script>
+  function resetFilters() {
+    document.querySelector('input[name="q"]').value = "";
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.getElementById('filterForm').submit();
+  }
+</script>
+
+
+{% endblock %}

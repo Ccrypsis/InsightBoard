@@ -1,0 +1,34 @@
+{% extends "base_with_sidebar.html" %}
+
+{% block title %}Pending Posts - Admin{% endblock %}
+
+{% block content %}
+    <h1>Pending Posts (FIFO)</h1>
+    <table>
+      <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Submitted</th>
+        <th>Author</th>
+        <th>Excerpt</th>
+      </tr>
+      {% for post in posts %}
+      <tr>
+        <td>{{ post.id }}</td>
+        <td>{{ post.title }}</td>
+        <td><span data-timestamp="{{ post.created_at.isoformat() }}" data-time-format="full"></span></td>
+        <td>{{ post.created_by }}</td>
+        <td>{{ post.excerpt }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    
+    <div style="margin-top:2rem">
+      <form method="post" action="{{ url_for('reset_db') }}" style="display: inline">
+        <button type="submit" onclick="return confirm('Are you sure you want to reset the database?')">
+          Reset Database
+        </button>
+      </form>
+      <a href="{{ url_for('logout') }}" style="margin-left: 1rem">Log out</a>
+    </div>
+{% endblock %}
