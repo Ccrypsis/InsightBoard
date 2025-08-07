@@ -11,14 +11,14 @@ class User(db.Model):
     role = db.Column(db.String(50), default='user')
     failed_attempts = db.Column(db.Integer, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
-    points = db.column(db.Integer, default=0)
+    points = db.Column(db.Integer, default=0)
 
     def __repr__(self):
         return f'<User {self.name}>'
 class Vote(db.Model):
     __tablename__ = 'votes'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     post_id = db.Column(db.Integer, db.ForeignKey('posts.id'), nullable=False)
     vote_type = db.Column(db.Enum('up','down', name='vote_types'), nullable=False)
     __table_args__ = (
@@ -34,7 +34,7 @@ class Achievement(db.Model):
 class UserAchievement(db.Model):
     __tablename__ = 'user_achievements'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     achievement_id = db.Column(db.Integer, db.ForeignKey('achievements.id'), nullable=False)
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     __table_args__ = (
