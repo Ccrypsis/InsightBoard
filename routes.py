@@ -7,7 +7,7 @@ import html
 from datetime import datetime, timezone
 from extensions import db
 from model import Post, PostReport
-
+from model import User, UserAchievement, Achievement, Vote
 
 routes_bp = Blueprint('routes', __name__)
 
@@ -461,6 +461,60 @@ def admin_search_filter():
         selected_categories=selected_categories,
         current_status="Filtered"
     )
+@routes_bp.route('/dashboard')
+def user_dashboard():
+    feed_posts= Post.query.order_by(Post.created_at.desc()).all()
+    achievements = Achievement.query.all()
+    unlocked_ids = [ua.achievement_id for ua in UserAchievement.query.filter_by(user_id=session.get("user_id")).all()]
+
+    return render_template("userdash.html", feed_posts-feed_posts, achievements=achievements, unlocked_ids=unlocked_ids)
+
+@routes_bp.route("/api/vote", methods=["POST"])
+def vote():
+    if not session.get("user.id"):
+        return jsonify({"status": "error", "message": "You must be logged in to vote"}), 401
+    data = request.get_json()
+    post_id = data.get("post_id")
+    new_ty = data['type']
+    user_id = session.get("user.id")
+
+    existing = vote.query.filter_by(user_id=user_id, post_id=post_id).first()
+    delta = 0
+
+    if existing:
+        if existing.vote_type == new_ty:
+            db.session.delete(existing)
+            delta = -1
+        else:
+            existing.vote_type = new_ty
+            delta = 0
+    else:
+        db.session.add(Vote(user_id=id, post_id=post_id, vote_type=new_ty))
+        delta = 1
+    user_id.points += delta
+    unlocked = []
+    if delta > 0:
+        for ach in Achievement.query.filter(Achievement.threshold <= user_id.points):
+            if not UserAchievement.query.filter_by(user_id=id, achievement_id=ach.id).first():
+                db.session.add(UserAchievement(user_id=id, achievement_id=ach.id))
+                unlocked.append(ach.name)
+
+    db.session.commit()
+    return jsonify(new_points=user_id.points, unlocked=unlocked)
+@routes_bp.route('/achievements')
+def achievements_page():
+    # pull in all achievements 
+    achievements = Achievement.query.order_by(Achievement.threshold).all()
+    user_id = session.get("user_id")
+    user = User.query.get(user_id) if user_id else None
+    unlocked_ids = [ua.achievement_id for ua in user.user_achievements] if user else []
+
+    return render_template(
+      'badges.html',
+      achievements=achievements,
+      unlocked_ids=unlocked_ids
+    )
+
 
         
 

@@ -1,3 +1,10 @@
+const achievements = JSON.parse(
+  document.getElementById('achievements-data').textContent
+);
+const unlocked    = new Set(
+  JSON.parse(document.getElementById('unlocked-ids-data').textContent)
+);
+
 document.addEventListener('DOMContentLoaded', () => {
   let participationPoints = parseInt(document.getElementById('point-balance').textContent, 10);
   const achievements = window.__ACHIEVEMENTS__, unlocked = new Set(window.__UNLOCKED__);

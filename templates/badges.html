@@ -1,10 +1,30 @@
 {% extends "base_with_sidebar.html" %}
 
-{% block title %}Badges{% endblock %}
+{% block title %}My Achievements{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-gray-900 mb-8">Badges</h1>
+    <div class="max-w-3xl mx-auto py-8">
+        <h1 class="text-3xl font-bold mb-4">My Achievements</h1>
 
-<!-- add badge functionality here -->
+        <!-- Participation Points -->
+        <div class="mb-6 text-right">
+            <span class="font-medium text-gray-700">Total Points:</span>
+            <span class="text-2xl font-bold text-indigo-600">{{ current_user.points }}</span>
+        </div>
+
+        <!-- Badges -->
+        <div class="flex flex-wrap gap-4">
+            {% for ach in achievements %}
+                <span class="px-4 py-2 rounded-full text-sm font-medium
+                            {% if ach.id in unlocked_ids %}
+                                bg-green-500 text-white
+                            {% else %}
+                                bg-gray-200 text-gray-600
+                            {% endif %}">
+                    {{ ach.name }}
+                </span>
+            {% endfor %}
+        </div>
+    </div>
 
 {% endblock %} 
