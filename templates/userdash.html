@@ -2,8 +2,34 @@
 
 {% block title %}Dashboard{% endblock %}
 
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/voting.css') }}">
+{% endblock %}
+
 {% block content %}
-<h1 class="text-3xl font-bold text-gray-900 mb-8">Feed</h1>
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-3xl font-bold text-gray-900 mb-8">Feed</h1>
+  <div class="flex items-center space-x-4">
+      <div class="text-right">
+        <div class="text-gray-700 font-medium">Participation Points</div>
+        <div id="point-balance" class="text-2xl font-bold text-indigo-600">{{ current_user.points }}</div>
+      </div>
+      <a href="{{ url_for('achievements_page') }}" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded">
+        Achievements
+      </a>
+    </div>
+  </div>
+  <div class="mb-8">
+    <h2 class="text-xl font-semibold text-gray-800 mb-4">Achievements</h2>
+    <div id="badges-container" class="flex flex-wrap gap-2">
+      {% for ach in achievements %}
+        <span class="px-3 py-1 rounded-full text-sm font-medium {% if ach.id in unlocked_ids %}bg-green-500 text-white{% else %}bg-gray-200 text-gray-600{% endif %}">
+          {{ ach.name }}
+        </span>
+      {% endfor %}
+    </div>
+  </div>
 
 <div class="mb-8">
   {% if feed_posts %}
@@ -42,11 +68,13 @@
 
         <p class="text-gray-800 mb-3">{{ post.content }}</p>
 
-        <div class="flex items-center text-sm text-gray-500">
-          <span>↑ {{ post.upvotes or 0 }}</span>
-          <span class="mx-2">|</span>
-          <span>↓ {{ post.downvotes or 0 }}</span>
-        </div>
+         <div class="flex items-center space-x-4">
+          <button class="vote-btn upvote">▲</button>
+          <span class="up-count font-medium text-gray-700"></span>
+          <span class="text-gray-400">|</span>
+          <span class="down-count font-medium text-gray-700"></span>
+          <button class="vote-btn downvote">▼</button>
+         </div>
       </div>
     {% else %}
       <p class="text-gray-500">No posts in feed yet.</p>
@@ -55,4 +83,14 @@
     <p class="text-gray-500">No posts in feed yet.</p>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script type="application/json" id="achievements-data">
+  {{ achievements | tojson | safe }}
+</script>
+<script type="application/json" id="unlocked-ids-data">
+  {{ unlocked_ids | tojson | safe }}
+</script>
+<script src="{{ url_for('static', filename='js/voting.js') }}"></script>
 {% endblock %}

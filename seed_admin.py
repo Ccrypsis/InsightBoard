@@ -1,5 +1,5 @@
 from extensions import db
-from model import User
+from model import User, db, Achievement
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import create_app
 
@@ -36,3 +36,13 @@ with app.app_context():
     print("Pulled from DB:", fresh_user.email)
     print("Stored hash in DB:", fresh_user.password)
     print("Password check (should be True):", check_password_hash(fresh_user.password, plain_password))
+# Seed achievements
+for name, thresh in [
+    ('First Vote',   1),
+    ('Ten Votes',   10),
+    ('50 Votes',    50),
+    ('100 Votes',  100),
+]:
+    if not Achievement.query.filter_by(name=name).first():
+        db.session.add(Achievement(name=name, threshold=thresh))
+db.session.commit()
